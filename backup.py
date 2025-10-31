@@ -54,7 +54,7 @@ if IS_UPLOAD_MINIO:
 
 if USE_POSTGRES_DOCKER:
     # Filestore nằm trong container
-    filestore_dir = f"/var/lib/odoo/filestore/{DB_NAME}"
+    filestore_dir = f"/var/lib/odoo/.local/share/Odoo/filestore/{DB_NAME}"
     # Sử dụng docker exec để access
     ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'inah-odoo')  # Thêm vào config.py
 else:
