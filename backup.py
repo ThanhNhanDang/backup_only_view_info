@@ -56,7 +56,7 @@ if USE_POSTGRES_DOCKER:
     # Filestore nằm trong container
     filestore_dir = f"/var/lib/odoo/filestore/{DB_NAME}"
     # Sử dụng docker exec để access
-    ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'odoo_container')  # Thêm vào config.py
+    ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'inah-odoo')  # Thêm vào config.py
 else:
     filestore_dir = FILESTORE_DIR + DB_NAME
 
