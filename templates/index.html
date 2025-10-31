@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>System Backup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f4f4f4;
+    }
+    h1 {
+      color: #333;
+    }
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    li {
+      margin: 5px 0;
+      padding: 10px;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      box-shadow: rgba(99, 99, 99, 0.2) 0px 2px 8px 0px;
+    }
+    a {
+      text-decoration: none;
+      color: #007BFF;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    #restoring {
+      display: none;
+      font-size: 1.5em;
+      color: #f39c12;
+      padding: 20px;
+      text-align: center;
+    }
+    .backup-btn {
+      background-color: #007BFF;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background-color 0.3s ease, box-shadow 0.2s ease;
+    }
+    .backup-btn:hover {
+      background-color: #0056b3;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    .backup-btn:active {
+      background-color: #004494;
+      transform: scale(0.98);
+    }
+    .show-message {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.2);
+      color: white;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      text-align: center;
+    }
+    .show-message span {
+      font-size: 2em;
+      color: blue;
+      padding: 20px;
+    }
+    #file-list {
+      list-style-type: none;
+      padding: 0;
+      margin: 20px 0;
+      max-height: calc(100vh - 250px);
+      overflow-y: auto;
+      max-width: calc(100% - 45% - 40px);
+      background-color: white;
+      padding-right: 10px;
+    }
+    #file-list::-webkit-scrollbar {
+      width: 10px;
+    }
+    #file-list::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.3);
+      border-radius: 5px;
+    }
+    #file-list::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .cpu-info-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 45px;
+      row-gap: 0px;
+      width: 50%;
+    }
+    .cpu-bar-container {
+      width: calc(20% - 10px);
+      margin-bottom: 10px;
+      box-sizing: border-box;
+      font-size: 12px;
+    }
+    .cpu-label {
+      display: inline-block;
+      font-size: 10px;
+    }
+    .cpu-bar-bg {
+      display: inline-block;
+      height: 10px;
+      width: 85%;
+      margin-right: 5px;
+      background-color: #333;
+    }
+    .ram-bar-bg {
+      display: inline-block;
+      height: 16px;
+      width: 100%;
+      background-color: yellowgreen;
+    }
+    .cpu-bar {
+      height: 10px;
+      background-color: #0f0;
+    }
+    .cpu-bar-container span {
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .cpu-percent {
+      position: absolute;
+    }
+    .ram-bar-container,
+    .swap-bar-container {
+      margin-bottom: 15px;
+      align-items: center;
+      gap: 10px;
+    }
+    .ram-bar-bg,
+    .swap-bar-bg {
+      width: 100%;
+      height: 20px;
+      background-color: #ddd;
+      border-radius: 10px;
+      position: relative;
+    }
+    .ram-bar,
+    .swap-bar {
+      height: 100%;
+      border-radius: 10px;
+    }
+    .ram-bar {
+      background-color: cadetblue;
+    }
+    .swap-bar {
+      background-color: darkgray;
+    }
+    .ram-info,
+    .swap-info {
+      font-size: 14px;
+      color: #333;
+    }
+    .ram-info span,
+    .swap-info span {
+      margin-left: 10px;
+    }
+    .disk-info-container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      width: 52%;
+    }
+    .disk-info-container div {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .disk-info-container h4 {
+      font-size: 16px;
+      color: #333;
+      margin: 0;
+    }
+    .disk-info-container p {
+      margin: 5px 10px 5px 0;
+      color: #555;
+      display: inline-block;
+    }
+    .column-1,
+    .column-2 {
+      display: block;
+      width: 100%;
+    }
+    .column-2 {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>JP Auto Backup</h1>
+  <p style="color:green">Main Server Info</p>
+  <div id="cpu-info"></div>
+  <div id="cpu-usage"></div>
+  <div id="disk-info" class="disk-info-container"></div>
+  <p style="color:blue;">Next scheduled backup at: {{ next_schedule }}</p>
+  <form id="backup-form" action="backup-now" method="POST" style="display:inline;">
+    <button class="backup-btn" type="submit" style="margin-top:10px;"
+      onclick="return confirm('Are you sure you want to run backup now?')">
+      Backup Now
+    </button>
+  </form>
+  <ul id="file-list">
+    {% for file in files %}
+    <li style="background: {% if file.is_dump_file %}linear-gradient(
+            90deg,
+            rgba(255, 0, 0, 0.1),
+            rgba(255, 165, 0, 0.1),
+            rgba(255, 255, 0, 0.1),
+            rgba(0, 128, 0, 0.1),
+            rgba(0, 0, 255, 0.1),
+            rgba(75, 0, 130, 0.1),
+            rgba(238, 130, 238, 0.1)
+          ){% else %}beige{% endif %};">
+      <a href="{{ file.url }}">{{ file.name }}</a> ({{ file.size }} MB)
+      {% if "dump" in file.name %}
+      <form action="{{ url_for('restore', filename=file.name) }}" method="POST" class="restore-form"
+        style="display:inline;">
+        <button type="submit">Restore</button>
+      </form>
+      {% endif %}
+      <form action="{{ url_for('delete', filename=file.name) }}" method="POST" class="delete-form"
+        style="display:inline;">
+        <button type="submit" onclick="return confirm('Are you sure you want to delete this backup?')">Delete</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <div
+    style="position: fixed; top: 20px; right: 20px; width: 45%; height: 90%; border: 1px solid #ccc; padding: 10px; overflow-y: scroll; font-family: monospace;"
+    id="log-container">
+    <h3 style="margin-top: 0;">Server Log</h3>
+    <div id="log-content" style="white-space: pre-wrap;"></div>
+  </div>
+  <div class='show-message'>
+    <span>Please wait, backing up...</span>
+  </div>
+  <div id="password-overlay" style="
+        position:fixed;
+        top:0;
+        left:0;
+        width:100%;
+        height:100%;
+        background:white;
+        z-index:9999;
+        display:none;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+      ">
+    <h2>Enter Access Code</h2>
+    <input type="password" id="access-input" placeholder="Enter code" style="padding:10px;font-size:16px;" autofocus />
+    <button onclick="checkAccess()" style="padding:10px 20px;margin-top:10px;">Enter</button>
+    <p id vuole="access-msg" style="color:red;margin-top:10px;"></p>
+  </div>
+
+  <script>
+    function updateCPU() {
+      fetch('/auto-backup/cpu_update')
+        .then(response => response.json())
+        .then(data => {
+          console.log('Received cpu_update:', data);
+          const container = document.getElementById("cpu-usage");
+          container.innerHTML = "";
+          const cpuInfoContainer = document.createElement('div');
+          cpuInfoContainer.classList.add('cpu-info-container');
+          data.cpu_per_core.forEach((percent, index) => {
+            const barWidth = percent + "%";
+            const cpuBarContainer = document.createElement('div');
+            cpuBarContainer.classList.add('cpu-bar-container');
+            cpuBarContainer.innerHTML = `
+                <span class="cpu-label">CPU ${index}:</span>
+                <div class="cpu-bar-bg">
+                  <div class="cpu-bar" style="width: ${barWidth}"></div>
+                </div>
+                <span class="cpu-percent">${percent.toFixed(1)}%</span>
+              `;
+            cpuInfoContainer.appendChild(cpuBarContainer);
+          });
+          container.appendChild(cpuInfoContainer);
+          const rowInfoContainer = document.createElement('div');
+          rowInfoContainer.classList.add('cpu-info-container');
+          const ramUsedPercent = (data.ram_used / data.ram_total) * 100;
+          const ramBarContainer = document.createElement('div');
+          ramBarContainer.classList.add('ram-bar-container');
+          ramBarContainer.innerHTML = `
+              <span class="cpu-label">RAM:</span>
+              <div class="ram-bar-bg">
+                <div class="ram-bar" style="width: ${ramUsedPercent.toFixed(1)}%"></div>
+              </div>
+              <span>${data.ram_used.toFixed(1)}MB / ${data.ram_total.toFixed(1)}MB</span>
+            `;
+          rowInfoContainer.appendChild(ramBarContainer);
+          const swapUsedPercent = (data.swap_used / data.swap_total) * 100;
+          const swapBarContainer = document.createElement('div');
+          swapBarContainer.classList.add('swap-bar-container');
+          swapBarContainer.innerHTML = `
+              <span class="cpu-label">Swap:</span>
+              <div class="swap-bar-bg">
+                <div class="swap-bar" style="width: ${swapUsedPercent.toFixed(1)}%"></div>
+              </div>
+              <span>${data.swap_used.toFixed(1)}MB / ${data.swap_total.toFixed(1)}MB</span>
+            `;
+          rowInfoContainer.appendChild(swapBarContainer);
+          container.appendChild(rowInfoContainer);
+        })
+        .catch(error => {
+          console.error('Error fetching cpu_update:', error);
+        });
+    }
+
+    // Gọi updateCPU mỗi giây
+    setInterval(updateCPU, 1000);
+
+    // Gọi ngay lần đầu
+    updateCPU();
+
+    $('a').on('click', function (e) {
+      const link = $(this);
+      if (link.data('clicked')) {
+        e.preventDefault();
+      } else {
+        link.data('clicked', true);
+        link.css('pointer-events', 'none');
+        link.css('opacity', '0.5');
+      }
+    });
+
+    $('.restore-form').on('submit', function (e) {
+      const confirmRestore = confirm('Please stop services before restore database. Are you sure you want to restore this backup ?');
+      if (!confirmRestore) {
+        e.preventDefault();
+      } else {
+        $('.show-message').find('span').text('Please wait, Restoring...');
+        $('.show-message').show();
+        setInterval(() => {
+          console.log("loading log...");
+          loadLog();
+        }, 1500);
+      }
+    });
+
+    $('#backup-form').on('submit', function () {
+      $('.show-message').find('span').text('Please wait, backing up...');
+      $('.show-message').show();
+      $('.backup-btn').prop('disabled', true);
+      setInterval(() => {
+        console.log("loading log...");
+        loadLog();
+      }, 1500);
+    });
+
+    $(document).ajaxComplete(function () {
+      $('.show-message').find('span').text('Please wait, backing up...');
+      $('.show-message').hide();
+      $('.backup-btn').prop('disabled', false);
+    });
+
+    function loadLog() {
+      fetch("/auto-backup/log")
+        .then(response => response.text())
+        .then(html => {
+          const logContent = document.getElementById("log-content");
+          logContent.innerHTML = html;
+          const container = document.getElementById("log-container");
+          container.scrollTop = container.scrollHeight;
+        });
+    }
+
+    loadLog();
+
+    fetch("/auto-backup/disk_info")
+      .then(response => response.json())
+      .then(data => {
+        const diskInfoContainer = document.getElementById("disk-info");
+        diskInfoContainer.innerHTML = "";
+        if (data.length > 0) {
+          data.forEach(disk => {
+            const diskElement = document.createElement("div");
+            diskElement.innerHTML = `
+                              <div class="column-1">
+                                  <h4>Device: ${disk.device}</h4>
+                                  <p>Mountpoint: ${disk.mountpoint}</p>
+                                  <p>Filesystem Type: ${disk.fstype}</p>
+                              </div>
+                              <div class="column-2">
+                                  <p>Total: ${(disk.total / (1024 ** 3)).toFixed(2)} GB</p>
+                                  <p>Used: ${(disk.used / (1024 ** 3)).toFixed(2)} GB</p>
+                                  <p>Free: ${(disk.free / (1024 ** 3)).toFixed(2)} GB</p>
+                                  <p>Usage: ${disk.percent}%</p>
+                              </div>
+                          `;
+            diskInfoContainer.appendChild(diskElement);
+          });
+        } else {
+          diskInfoContainer.innerHTML = "<p>No disk information available.</p>";
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching disk info:', error);
+      });
+
+    fetch("/auto-backup/cpu_info")
+      .then(response => response.json())
+      .then(data => {
+        const cpuInfoContainer = document.getElementById("cpu-info");
+        cpuInfoContainer.innerHTML = "";
+        if (data.cpu_model) {
+          const cpuElement = document.createElement("div");
+          cpuElement.innerHTML = `
+                          <div class="cpu-info" style="margin-bottom: 15px;">
+                              <h4 style="display: inline; margin-right: 10px;">Model Name:</h4>
+                              <span style="display: inline;">${data.cpu_model}</span>
+                              <h4 style="display: inline; margin-right: 10px; margin-left: 20px;">Cores:</h4>
+                              <span style="display: inline;">${data.total_cores}</span>
+                          </div>
+                      `;
+          cpuInfoContainer.appendChild(cpuElement);
+        } else {
+          cpuInfoContainer.innerHTML = "<p>No CPU information available.</p>";
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching CPU info:', error);
+      });
+  </script>
+</body>
+</html>

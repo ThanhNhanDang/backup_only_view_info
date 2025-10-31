@@ -1,0 +1,6 @@
+2025-05-09 22:06:31 PRINT Starting flask server
+ * Serving Flask app 'flask_server'
+ * Debug mode: off
+2025-05-09 22:06:44 PRINT Postgres is installed directly on the server, not using Docker.
+2025-05-09 22:06:44 PRINT [INFO] Running restore command: sudo -u odoo /usr/bin/pg_restore -U odoo -p 5432 -C -d postgres /home/administrator/pg_dumps/test_auto_backup_2025-05-09_21-43-30.dump
+2025-05-09 22:06:44 PRINT [ERROR] Unexpected error: [Errno 2] No such file or directory: 'sudo -u odoo'
