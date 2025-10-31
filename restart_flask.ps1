@@ -33,4 +33,4 @@ Write-Output "Starting Flask server..."
 Set-Location $SCRIPT_DIR
 Start-Process -FilePath $PYTHON -ArgumentList "-u", "$SCRIPT_DIR\flask_server.py" -RedirectStandardOutput "$SCRIPT_DIR\flask.log" -RedirectStandardError "$SCRIPT_DIR\flask.log" -NoNewWindow
 
-Write-Output "Flask server restarted at port 8008 and running in background."
+Write-Output "Flask server restarted at port 8080 and running in background."
