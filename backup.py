@@ -183,7 +183,8 @@ else:
 # Prepare zip filename
 zip_name = f"filestore_backup_{now.strftime('%Y-%m-%d_%H-%M-%S')}.zip"
 zip_path = os.path.join(BACKUP_DIR, zip_name)
-
+print(f"Creating zip file: {zip_path}")
+print(os.path.exists(BACKUP_DIR))
 if os.path.exists(BACKUP_DIR) and os.path.exists(filestore_dir):
     # Collect and zip changed files
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
