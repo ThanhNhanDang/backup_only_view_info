@@ -21,7 +21,7 @@ BUCKET_BAK = "backups"
 
 FILESTORE_DIR = "/odoo/.local/share/Odoo/filestore/"
 BACKUP_DIR = "/home/administrator/pg_dumps"
-MAX_FILES_DUMP = 3
+MAX_FILES_DUMP = 7
 
 #login UI
 PASSWORD_LOGIN_UI = 'autonsi1234'
