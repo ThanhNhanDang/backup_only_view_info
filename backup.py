@@ -93,8 +93,12 @@ if USE_POSTGRES_DOCKER:
         f'--username={DB_USER} --dbname={DB_NAME} > "{dump_path}"'
     )
 else:
+    # dump_cmd = (
+    #     f'sudo -u odoo "{PG_BIN}pg_dump" -p {PG_PORT} -Fc '
+    #     f'--username={DB_USER} --dbname={DB_NAME} > "{dump_path}"'
+    # )
     dump_cmd = (
-        f'sudo -u odoo "{PG_BIN}pg_dump" -p {PG_PORT} -Fc '
+        f'PGPASSWORD="{DB_PASSWORD}" "{PG_BIN}pg_dump" -p {PG_PORT} -Fc '
         f'--username={DB_USER} --dbname={DB_NAME} > "{dump_path}"'
     )
 

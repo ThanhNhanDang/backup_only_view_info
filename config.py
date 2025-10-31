@@ -7,7 +7,7 @@ IS_UPLOAD_MINIO = False
 
 DB_NAME = "inah"
 DB_USER = "odoo"
-DB_PASSWORD = "123456aA@"
+DB_PASSWORD = "MkWkrQrD8sA7oEOPhqLVpmXbWswuoop0yGEkmVNkdeMWIqBj"
 PG_PORT = 5432
 PG_BIN = '/usr/bin/'
 PG_CONTAINER = 'postgres-db'
