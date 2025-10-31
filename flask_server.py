@@ -325,7 +325,7 @@ atexit.register(close_server)
 
 
 def flask_run():
-    app.run(host='0.0.0.0', port=8008)  # Changed port to 8009
+    app.run(host='0.0.0.0', port=8080)  # Changed port to 8009
 
 
 if __name__ == '__main__':
