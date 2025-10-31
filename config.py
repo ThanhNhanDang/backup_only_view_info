@@ -10,7 +10,7 @@ DB_USER = "odoo"
 DB_PASSWORD = "MkWkrQrD8sA7oEOPhqLVpmXbWswuoop0yGEkmVNkdeMWIqBj"
 PG_PORT = 5432
 PG_BIN = '/usr/bin/'
-PG_CONTAINER = 'postgres-db'
+PG_CONTAINER = 'postgres_db'
 DUMP_PREFIX = DB_NAME
 
 # === Configuration Minio ===
