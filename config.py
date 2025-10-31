@@ -5,7 +5,7 @@ LOCAL_TZ = pytz.timezone('Asia/Bangkok')
 USE_POSTGRES_DOCKER = False
 IS_UPLOAD_MINIO = False
 
-DB_NAME = "inah_real"
+DB_NAME = "inah"
 DB_USER = "odoo"
 DB_PASSWORD = "123456aA@"
 PG_PORT = 5432
