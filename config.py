@@ -2,7 +2,7 @@ import  pytz
 # Timezone cho GMT+7 (Asia/Bangkok)
 LOCAL_TZ = pytz.timezone('Asia/Bangkok')
 
-USE_POSTGRES_DOCKER = False
+USE_POSTGRES_DOCKER = True
 IS_UPLOAD_MINIO = False
 
 DB_NAME = "inah"
