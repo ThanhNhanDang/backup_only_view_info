@@ -52,7 +52,13 @@ if IS_UPLOAD_MINIO:
             print(f"Bucket '{BUCKET_BAK}' created.")
 
 
-filestore_dir = FILESTORE_DIR + DB_NAME
+if USE_POSTGRES_DOCKER:
+    # Filestore nằm trong container
+    filestore_dir = f"/var/lib/odoo/filestore/{DB_NAME}"
+    # Sử dụng docker exec để access
+    ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'odoo_container')  # Thêm vào config.py
+else:
+    filestore_dir = FILESTORE_DIR + DB_NAME
 
 
 # ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -183,21 +189,41 @@ else:
 # Prepare zip filename
 zip_name = f"filestore_backup_{now.strftime('%Y-%m-%d_%H-%M-%S')}.zip"
 zip_path = os.path.join(BACKUP_DIR, zip_name)
-print(f"Creating zip file: {zip_path}")
-print(os.path.exists(BACKUP_DIR))
-if os.path.exists(BACKUP_DIR) and os.path.exists(filestore_dir):
-    # Collect and zip changed files
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in os.walk(filestore_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                file_ctime_native = datetime.datetime.fromtimestamp(
-                    os.path.getctime(file_path))
-                file_ctime = LOCAL_TZ.localize(file_ctime_native)
-                if not last_check_dt or file_ctime > last_check_dt:
-                    arcname = os.path.relpath(file_path, filestore_dir)
-                    zipf.write(file_path, arcname=os.path.join(
-                        DB_NAME, arcname))
+if os.path.exists(BACKUP_DIR):
+    if USE_POSTGRES_DOCKER:
+        # Copy filestore từ container ra host trước
+        temp_filestore = os.path.join(BACKUP_DIR, "temp_filestore")
+        os.makedirs(temp_filestore, exist_ok=True)
+        
+        copy_cmd = f"docker cp {ODOO_CONTAINER}:{filestore_dir} {temp_filestore}"
+        print(f"Copying filestore from container: {copy_cmd}")
+        
+        try:
+            subprocess.run(copy_cmd, shell=True, check=True)
+            source_dir = os.path.join(temp_filestore, DB_NAME)
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to copy filestore: {e}")
+            source_dir = None
+    else:
+        source_dir = filestore_dir
+    
+    if source_dir and os.path.exists(source_dir):
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(source_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_ctime_native = datetime.datetime.fromtimestamp(
+                        os.path.getctime(file_path))
+                    file_ctime = LOCAL_TZ.localize(file_ctime_native)
+                    if not last_check_dt or file_ctime > last_check_dt:
+                        arcname = os.path.relpath(file_path, source_dir)
+                        zipf.write(file_path, arcname=os.path.join(
+                            DB_NAME, arcname))
+        
+        # Xóa temp folder
+        if USE_POSTGRES_DOCKER and os.path.exists(temp_filestore):
+            import shutil
+            shutil.rmtree(temp_filestore)
 
     # Save current time as last check
     with open(last_check_file, "w") as f:
