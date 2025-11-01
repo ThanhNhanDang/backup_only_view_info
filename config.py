@@ -3,7 +3,7 @@ import  pytz
 LOCAL_TZ = pytz.timezone('Asia/Bangkok')
 
 USE_POSTGRES_DOCKER = True
-IS_UPLOAD_MINIO = False
+IS_UPLOAD_MINIO = TRUE
 
 DB_NAME = "inah"
 DB_USER = "odoo"
@@ -14,10 +14,10 @@ PG_CONTAINER = 'postgres_db'
 DUMP_PREFIX = DB_NAME
 
 # === Configuration Minio ===
-MINIO_URL = "http://192.168.1.10:12899" # URL API Minio
-ACCESS_KEY = "admin" #ACCESS_KEY created  on UI minio or ROOT_USER
+MINIO_URL = "http://192.168.1.211:9001/" # URL API Minio
+ACCESS_KEY = "autonsi" #ACCESS_KEY created  on UI minio or ROOT_USER
 SECRET_KEY = "autonsi1234"# SECRET_KEY created on UI minio or ROOT_USER_PASSWORD
-BUCKET_BAK = "backups"
+BUCKET_BAK = "auto-backup"
 
 FILESTORE_DIR = "/odoo/.local/share/Odoo/filestore/"
 BACKUP_DIR = "/home/administrator/pg_dumps"
