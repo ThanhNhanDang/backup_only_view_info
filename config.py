@@ -3,7 +3,7 @@ import  pytz
 LOCAL_TZ = pytz.timezone('Asia/Bangkok')
 
 USE_POSTGRES_DOCKER = True
-IS_UPLOAD_MINIO = TRUE
+IS_UPLOAD_MINIO = True
 
 DB_NAME = "inah"
 DB_USER = "odoo"
