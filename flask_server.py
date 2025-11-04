@@ -73,7 +73,7 @@ def index():
     for file_name in os.listdir(BACKUP_DIR):
         file_path = os.path.join(BACKUP_DIR, file_name)
         os.path.isfile(file_path)
-
+        # if os.path.isfile(file_path) and (file_name.endswith('.dump') or file_name.endswith('.zip')):
         file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
         file_creation_time = os.path.getctime(file_path)
         files.append({
@@ -190,10 +190,25 @@ def restore(filename):
         if USE_POSTGRES_DOCKER:
             print("Restore in docker mode")
             try:
-                print("Coping file dump into container...")
-                docker_cp_cmd = ['docker', 'cp', os.path.join(
-                    BACKUP_DIR, filename), f'{PG_CONTAINER}:/tmp/{filename}']
+                print("Copying file dump into container...")
+                source_path = os.path.join(BACKUP_DIR, filename)
+                
+                # Kiểm tra file tồn tại
+                if not os.path.exists(source_path):
+                    print(f"[ERROR] Backup file not found: {source_path}")
+                    return redirect(url_for('index'))
+                
+                # Copy file vào container
+                docker_cp_cmd = ['docker', 'cp', source_path, f'{PG_CONTAINER}:/tmp/{filename}']
                 subprocess.run(docker_cp_cmd, check=True)
+                print(f"[INFO] File copied successfully to container")
+                
+                # Verify file trong container
+                verify_cmd = ['docker', 'exec', PG_CONTAINER, 'ls', '-lh', f'/tmp/{filename}']
+                verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
+                print(f"[INFO] File in container: {verify_result.stdout}")
+                
+                # Restore database
                 restore_cmd = [
                     'docker', 'exec', '-i', PG_CONTAINER,
                     'pg_restore',
@@ -203,13 +218,26 @@ def restore(filename):
                     '-d', 'postgres',
                     f'/tmp/{filename}'
                 ]
-                print(
-                    f"[INFO] Running restore command in Docker: {' '.join(restore_cmd)}")
-                result = subprocess.run(restore_cmd, check=True)
-                print("[INFO] Restore completed successfully in Docker.")
+                print(f"[INFO] Running restore command in Docker: {' '.join(restore_cmd)}")
+                
+                # Capture output để debug
+                result = subprocess.run(restore_cmd, capture_output=True, text=True)
+                
+                if result.returncode != 0:
+                    print(f"[ERROR] pg_restore stderr: {result.stderr}")
+                    print(f"[ERROR] pg_restore stdout: {result.stdout}")
+                    print(f"[ERROR] Please DROP or RENAME old database before restore.")
+                else:
+                    print("[INFO] Restore completed successfully in Docker.")
+                    
+                    # Clean up file trong container
+                    cleanup_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', f'/tmp/{filename}']
+                    subprocess.run(cleanup_cmd)
+                    print(f"[INFO] Cleaned up temp file in container")
+                    
             except subprocess.CalledProcessError as e:
-                print(
-                    f"[ERROR] pg_restore failed: Please DROP or RENAME old database before restore.")
+                print(f"[ERROR] Command failed: {e}")
+                print(f"[ERROR] Please DROP or RENAME old database before restore.")
             except Exception as ex:
                 print(f"[ERROR] Unexpected error: {ex}")
         else:
@@ -228,30 +256,56 @@ def restore(filename):
                     '-d', 'postgres',
                     file_path
                 ]
-                print(
-                    f"[INFO] Running restore command: {' '.join(restore_cmd)}")
+                print(f"[INFO] Running restore command: {' '.join(restore_cmd)}")
                 result = subprocess.run(restore_cmd, check=True)
-                # Nếu là file zip, giải nén filestore vào FILESTORE_DIR
-
                 print(f"[INFO] Dump file restore completed successfully.")
             except subprocess.CalledProcessError as e:
-                print(
-                    f"[ERROR] pg_restore failed: Please DROP or RENAME old database before restore.")
+                print(f"[ERROR] pg_restore failed: Please DROP or RENAME old database before restore.")
             except Exception as ex:
                 print(f"[ERROR] Unexpected error: {ex}")
-        zip_path = os.path.join(BACKUP_DIR)
+        
+        # Restore filestore
         try:
-            zip_files = [f for f in os.listdir(
-                BACKUP_DIR) if f.endswith('.zip')]
-            for zip_file in zip_files:
-                zip_path = os.path.join(BACKUP_DIR, zip_file)
-                print(f"[INFO] Restoring filestore from: {zip_file}")
-               # Giải nén file zip vào thư mục đó
-                subprocess.run(['sudo', '-u', 'odoo', 'unzip', '-o', zip_path, '-d', FILESTORE_DIR], check=True)
-
-            print("[INFO] All filestore zip files restored successfully.")
+            zip_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.zip')]
+            
+            if not zip_files:
+                print("[INFO] No filestore zip files found to restore.")
+            else:
+                for zip_file in zip_files:
+                    zip_path = os.path.join(BACKUP_DIR, zip_file)
+                    print(f"[INFO] Restoring filestore from: {zip_file}")
+                    
+                    if USE_POSTGRES_DOCKER:
+                        # Docker mode: cần copy zip vào Odoo container và unzip ở đó
+                        ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'inah-odoo')
+                        
+                        # Copy zip file vào Odoo container
+                        docker_cp_cmd = ['docker', 'cp', zip_path, f'{ODOO_CONTAINER}:/tmp/{zip_file}']
+                        subprocess.run(docker_cp_cmd, check=True)
+                        print(f"[INFO] Copied {zip_file} to Odoo container")
+                        
+                        # Unzip trong container
+                        unzip_cmd = [
+                            'docker', 'exec', ODOO_CONTAINER,
+                            'unzip', '-o', f'/tmp/{zip_file}', 
+                            '-d', f'/var/lib/odoo/.local/share/Odoo/filestore/'
+                        ]
+                        subprocess.run(unzip_cmd, check=True)
+                        print(f"[INFO] Unzipped {zip_file} in Odoo container")
+                        
+                        # Clean up
+                        cleanup_cmd = ['docker', 'exec', ODOO_CONTAINER, 'rm', f'/tmp/{zip_file}']
+                        subprocess.run(cleanup_cmd)
+                        
+                    else:
+                        # Non-Docker mode
+                        subprocess.run(['sudo', '-u', 'odoo', 'unzip', '-o', zip_path, '-d', FILESTORE_DIR], check=True)
+                    
+                print("[INFO] All filestore zip files restored successfully.")
+                
         except Exception as e:
             print(f"[ERROR] Failed to restore filestore from zip files: {e}")
+            
     return redirect(url_for('index'))
 
 
