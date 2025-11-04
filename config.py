@@ -3,6 +3,7 @@ import pytz
 # Timezone cho GMT+7 (Asia/Bangkok)
 LOCAL_TZ = pytz.timezone('Asia/Bangkok')
 import shutil
+import os
 
 USE_POSTGRES_DOCKER = True
 IS_UPLOAD_MINIO = True
@@ -26,7 +27,7 @@ SECRET_KEY = "autonsi1234"
 BUCKET_BAK = "auto-backup"
 
 FILESTORE_DIR = "/odoo/.local/share/Odoo/filestore/"
-BACKUP_DIR = "/home/administrator/pg_dumps"
+BACKUP_DIR = os.path.expanduser("~/pg_dumps")  # User's home directory
 MAX_FILES_DUMP = 7
 
 # Login UI
