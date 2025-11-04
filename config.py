@@ -7,9 +7,9 @@ import shutil
 USE_POSTGRES_DOCKER = True
 IS_UPLOAD_MINIO = True
 
-DB_NAME = "inah_2025-01-14"
+DB_NAME = "inah"
 DB_USER = "odoo"
-DB_PASSWORD = "MkWkrQrD8sA7oEOPhqLVpmXbWswuoop0yGEkmVNkdeMWIqBj"
+DB_PASSWORD = "MkWkrQrD8sA7oEOPhqLVpmXbWswuoop0yGEkmVNkdeMWIqBj" # Không xài
 PG_PORT = 5432
 PG_BIN = '/usr/bin/'
 PG_CONTAINER = 'postgres_db'
