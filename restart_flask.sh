@@ -1,5 +1,6 @@
 #!/bin/bash
-
+# docker exec -u root inah-odoo rm -rf /var/lib/odoo/.local/share/Odoo/filestore/inah
+JkM5DvrD3wWSSMGP
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Checking for existing flask_server.py process..."
