@@ -19,18 +19,18 @@ else
   echo "No existing Flask server process found."
 fi
 
-# VENV_PATH="$SCRIPT_DIR/venv"
+VENV_PATH="$SCRIPT_DIR/venv"
 
-# if [ -f "$VENV_PATH/bin/python" ]; then
-#   PYTHON="$VENV_PATH/bin/python"
-#   echo "Using virtual environment Python: $PYTHON"
-# else
-#   echo "Virtual environment not found at $VENV_PATH"
-#   exit 1
-# fi
+if [ -f "$VENV_PATH/bin/python" ]; then
+  PYTHON="$VENV_PATH/bin/python"
+  echo "Using virtual environment Python: $PYTHON"
+else
+  echo "Virtual environment not found at $VENV_PATH"
+  exit 1
+fi
 
-# echo "Starting Flask server..."
-# cd "$SCRIPT_DIR"
-# nohup "$PYTHON" -u "$SCRIPT_DIR/flask_server.py" > "$SCRIPT_DIR/flask.log" 2>&1 &
+echo "Starting Flask server..."
+cd "$SCRIPT_DIR"
+nohup "$PYTHON" -u "$SCRIPT_DIR/flask_server.py" > "$SCRIPT_DIR/flask.log" 2>&1 &
 
-# echo "Flask server restarted at port 8080 and running in background."
+echo "Flask server restarted at port 8080 and running in background."
