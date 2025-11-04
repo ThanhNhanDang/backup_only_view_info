@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import builtins
 import logging
+import boto3
+from botocore.exceptions import ClientError
 from config import DB_NAME, DB_USER, DB_PASSWORD, PG_PORT, PG_CONTAINER, PG_BIN, USE_POSTGRES_DOCKER
 from config import IS_UPLOAD_MINIO,MINIO_URL, ACCESS_KEY, SECRET_KEY, BUCKET_BAK, BACKUP_DIR, FILESTORE_DIR, PASSWORD_LOGIN_UI, LOCAL_TZ
 if IS_UPLOAD_MINIO:
