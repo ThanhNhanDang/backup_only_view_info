@@ -71,6 +71,7 @@ def index():
         return redirect(url_for('login'))
     files = []
     for file_name in os.listdir(BACKUP_DIR):
+        print(file_name)
         file_path = os.path.join(BACKUP_DIR, file_name)
         if os.path.isfile(file_path) and (file_name.endswith('.dump') or file_name.endswith('.zip')):
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
