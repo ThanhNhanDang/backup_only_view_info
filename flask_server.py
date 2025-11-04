@@ -393,7 +393,7 @@ def flask_run():
 if __name__ == '__main__':
     flask_thread = Thread(target=flask_run)
     flask_thread.start()
-    schedule_midnight_job()
+    # schedule_midnight_job()
     try:
         while True:
             schedule.run_pending()
