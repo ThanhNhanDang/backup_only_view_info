@@ -296,30 +296,7 @@ def restore(filename):
         # Restore filestore
         try:
             zip_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.zip')]
-            
             # Download zip files từ MinIO nếu không có local
-            if IS_UPLOAD_MINIO:
-                try:
-                    # List all objects trong bucket
-                    response = s3_client.list_objects_v2(Bucket=BUCKET_BAK)
-                    if 'Contents' in response:
-                        minio_zip_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.zip')]
-                        
-                        for zip_file in minio_zip_files:
-                            local_zip_path = os.path.join(BACKUP_DIR, zip_file)
-                            
-                            # Download nếu không tồn tại hoặc 0 byte
-                            if not os.path.exists(local_zip_path) or os.path.getsize(local_zip_path) == 0:
-                                print(f"[INFO] Downloading {zip_file} from MinIO...")
-                                s3_client.download_file(BUCKET_BAK, zip_file, local_zip_path)
-                                file_size_mb = os.path.getsize(local_zip_path) / (1024 * 1024)
-                                print(f"[INFO] Downloaded {zip_file} ({file_size_mb:.2f} MB)")
-                                
-                                if zip_file not in zip_files:
-                                    zip_files.append(zip_file)
-                except ClientError as e:
-                    print(f"[ERROR] Failed to list/download zip files from MinIO: {e}")
-            
             if not zip_files:
                 print("[INFO] No filestore zip files found to restore.")
             else:
