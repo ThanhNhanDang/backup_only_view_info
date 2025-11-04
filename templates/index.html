@@ -39,7 +39,7 @@
       padding: 20px;
       text-align: center;
     }
-    .backup-btn {
+    .backup-btn, .sync-btn {
       background-color: #007BFF;
       color: white;
       border: none;
@@ -48,14 +48,40 @@
       border-radius: 8px;
       cursor: pointer;
       transition: background-color 0.3s ease, box-shadow 0.2s ease;
+      margin-right: 10px;
     }
-    .backup-btn:hover {
+    .backup-btn:hover, .sync-btn:hover {
       background-color: #0056b3;
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     }
-    .backup-btn:active {
+    .backup-btn:active, .sync-btn:active {
       background-color: #004494;
       transform: scale(0.98);
+    }
+    .sync-btn {
+      background-color: #28a745;
+    }
+    .sync-btn:hover {
+      background-color: #218838;
+    }
+    .sync-btn:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+    .sync-status {
+      display: inline-block;
+      margin-left: 10px;
+      color: #555;
+      font-size: 14px;
+    }
+    .sync-status.success {
+      color: green;
+    }
+    .sync-status.error {
+      color: red;
+    }
+    .sync-status.loading {
+      color: #007BFF;
     }
     .show-message {
       position: fixed;
@@ -200,6 +226,9 @@
     .column-2 {
       margin-top: 10px;
     }
+    .button-group {
+      margin: 10px 0;
+    }
   </style>
 </head>
 <body>
@@ -209,12 +238,22 @@
   <div id="cpu-usage"></div>
   <div id="disk-info" class="disk-info-container"></div>
   <p style="color:blue;">Next scheduled backup at: {{ next_schedule }}</p>
-  <form id="backup-form" action="backup-now" method="POST" style="display:inline;">
-    <button class="backup-btn" type="submit" style="margin-top:10px;"
-      onclick="return confirm('Are you sure you want to run backup now?')">
-      Backup Now
+  
+  <div class="button-group">
+    <form id="backup-form" action="backup-now" method="POST" style="display:inline;">
+      <button class="backup-btn" type="submit"
+        onclick="return confirm('Are you sure you want to run backup now?')">
+        📦 Backup Now
+      </button>
+    </form>
+    
+    <button class="sync-btn" id="sync-btn" onclick="syncFromMinio()">
+      ☁️ Sync from MinIO
     </button>
-  </form>
+    
+    <span id="sync-status" class="sync-status"></span>
+  </div>
+
   <ul id="file-list">
     {% for file in files %}
     <li style="background: {% if file.is_dump_file %}linear-gradient(
@@ -241,15 +280,18 @@
     </li>
     {% endfor %}
   </ul>
+  
   <div
     style="position: fixed; top: 20px; right: 20px; width: 45%; height: 90%; border: 1px solid #ccc; padding: 10px; overflow-y: scroll; font-family: monospace;"
     id="log-container">
     <h3 style="margin-top: 0;">Server Log</h3>
     <div id="log-content" style="white-space: pre-wrap;"></div>
   </div>
+  
   <div class='show-message'>
     <span>Please wait, backing up...</span>
   </div>
+  
   <div id="password-overlay" style="
         position:fixed;
         top:0;
@@ -266,10 +308,53 @@
     <h2>Enter Access Code</h2>
     <input type="password" id="access-input" placeholder="Enter code" style="padding:10px;font-size:16px;" autofocus />
     <button onclick="checkAccess()" style="padding:10px 20px;margin-top:10px;">Enter</button>
-    <p id vuole="access-msg" style="color:red;margin-top:10px;"></p>
+    <p id="access-msg" style="color:red;margin-top:10px;"></p>
   </div>
 
   <script>
+    // Sync from MinIO function
+    function syncFromMinio() {
+      const statusEl = document.getElementById('sync-status');
+      const syncBtn = document.getElementById('sync-btn');
+      
+      // Disable button and show loading
+      syncBtn.disabled = true;
+      statusEl.className = 'sync-status loading';
+      statusEl.innerHTML = '🔄 Syncing from MinIO...';
+      
+      fetch('/auto-backup/sync-from-minio', {
+        method: 'POST',
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          statusEl.className = 'sync-status error';
+          statusEl.innerHTML = `❌ Error: ${data.error}`;
+        } else {
+          statusEl.className = 'sync-status success';
+          const fileCount = data.files ? data.files.length : 0;
+          statusEl.innerHTML = `✅ ${data.message}`;
+          
+          // Reload page after 2 seconds if files were synced
+          if (fileCount > 0) {
+            setTimeout(() => {
+              location.reload();
+            }, 2000);
+          }
+        }
+      })
+      .catch(error => {
+        statusEl.className = 'sync-status error';
+        statusEl.innerHTML = `❌ Error: ${error}`;
+      })
+      .finally(() => {
+        // Re-enable button after 3 seconds
+        setTimeout(() => {
+          syncBtn.disabled = false;
+        }, 3000);
+      });
+    }
+
     function updateCPU() {
       fetch('/auto-backup/cpu_update')
         .then(response => response.json())

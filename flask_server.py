@@ -2,6 +2,13 @@
 import builtins
 import logging
 from config import DB_NAME, DB_USER, DB_PASSWORD, PG_PORT, PG_CONTAINER, PG_BIN, USE_POSTGRES_DOCKER
+if IS_UPLOAD_MINIO:
+    s3_client = boto3.client('s3',
+                      endpoint_url=MINIO_URL,
+                      aws_access_key_id=ACCESS_KEY,
+                      aws_secret_access_key=SECRET_KEY,
+                      config=boto3.session.Config(signature_version='s3v4'))
+
 from config import MINIO_URL, ACCESS_KEY, SECRET_KEY, BUCKET_BAK, BACKUP_DIR, FILESTORE_DIR, PASSWORD_LOGIN_UI, LOCAL_TZ
 from flask import Flask, render_template, request, Response, jsonify, redirect, url_for, session
 import atexit
@@ -187,19 +194,37 @@ def delete(filename):
 @app.route(f'{URL}restore/<filename>', methods=['POST'])
 def restore(filename):
     if filename.endswith('.dump'):
+        file_path = os.path.join(BACKUP_DIR, filename)
+        
+        # Kiểm tra nếu file local không tồn tại hoặc 0 byte, download từ MinIO
+        if IS_UPLOAD_MINIO:
+            if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+                print(f"[INFO] File {filename} not found or empty locally. Downloading from MinIO...")
+                try:
+                    s3_client.download_file(BUCKET_BAK, filename, file_path)
+                    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                    print(f"[INFO] Downloaded {filename} from MinIO ({file_size_mb:.2f} MB)")
+                except ClientError as e:
+                    print(f"[ERROR] Failed to download from MinIO: {e}")
+                    return redirect(url_for('index'))
+            else:
+                print(f"[INFO] Using local file: {filename}")
+        
+        # Restore database
         if USE_POSTGRES_DOCKER:
             print("Restore in docker mode")
             try:
-                print("Copying file dump into container...")
-                source_path = os.path.join(BACKUP_DIR, filename)
-                
-                # Kiểm tra file tồn tại
-                if not os.path.exists(source_path):
-                    print(f"[ERROR] Backup file not found: {source_path}")
+                # Verify file size
+                file_size = os.path.getsize(file_path)
+                if file_size == 0:
+                    print(f"[ERROR] File {filename} is 0 bytes!")
                     return redirect(url_for('index'))
                 
+                print(f"[INFO] File size: {file_size / (1024*1024):.2f} MB")
+                print("Copying file dump into container...")
+                
                 # Copy file vào container
-                docker_cp_cmd = ['docker', 'cp', source_path, f'{PG_CONTAINER}:/tmp/{filename}']
+                docker_cp_cmd = ['docker', 'cp', file_path, f'{PG_CONTAINER}:/tmp/{filename}']
                 subprocess.run(docker_cp_cmd, check=True)
                 print(f"[INFO] File copied successfully to container")
                 
@@ -220,7 +245,6 @@ def restore(filename):
                 ]
                 print(f"[INFO] Running restore command in Docker: {' '.join(restore_cmd)}")
                 
-                # Capture output để debug
                 result = subprocess.run(restore_cmd, capture_output=True, text=True)
                 
                 if result.returncode != 0:
@@ -228,25 +252,25 @@ def restore(filename):
                     print(f"[ERROR] pg_restore stdout: {result.stdout}")
                     print(f"[ERROR] Please DROP or RENAME old database before restore.")
                 else:
-                    print("[INFO] Restore completed successfully in Docker.")
+                    print("[INFO] Database restore completed successfully in Docker.")
                     
-                    # Clean up file trong container
-                    cleanup_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', f'/tmp/{filename}']
-                    subprocess.run(cleanup_cmd)
-                    print(f"[INFO] Cleaned up temp file in container")
+                # Clean up file trong container
+                cleanup_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', f'/tmp/{filename}']
+                subprocess.run(cleanup_cmd)
+                print(f"[INFO] Cleaned up temp file in container")
                     
             except subprocess.CalledProcessError as e:
                 print(f"[ERROR] Command failed: {e}")
-                print(f"[ERROR] Please DROP or RENAME old database before restore.")
             except Exception as ex:
                 print(f"[ERROR] Unexpected error: {ex}")
         else:
+            # Non-Docker mode
             print("Postgres is installed directly on the server, not using Docker.")
             try:
-                file_path = os.path.join(BACKUP_DIR, filename)
                 if not os.path.exists(file_path):
                     print(f"[ERROR] Backup file not found: {file_path}")
                     return redirect(url_for('index'))
+                    
                 restore_cmd = [
                     'sudo', '-u', 'odoo',
                     os.path.join(PG_BIN, 'pg_restore'),
@@ -258,9 +282,9 @@ def restore(filename):
                 ]
                 print(f"[INFO] Running restore command: {' '.join(restore_cmd)}")
                 result = subprocess.run(restore_cmd, check=True)
-                print(f"[INFO] Dump file restore completed successfully.")
+                print(f"[INFO] Database restore completed successfully.")
             except subprocess.CalledProcessError as e:
-                print(f"[ERROR] pg_restore failed: Please DROP or RENAME old database before restore.")
+                print(f"[ERROR] pg_restore failed: {e}")
             except Exception as ex:
                 print(f"[ERROR] Unexpected error: {ex}")
         
@@ -268,17 +292,46 @@ def restore(filename):
         try:
             zip_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.zip')]
             
+            # Download zip files từ MinIO nếu không có local
+            if IS_UPLOAD_MINIO:
+                try:
+                    # List all objects trong bucket
+                    response = s3_client.list_objects_v2(Bucket=BUCKET_BAK)
+                    if 'Contents' in response:
+                        minio_zip_files = [obj['Key'] for obj in response['Contents'] if obj['Key'].endswith('.zip')]
+                        
+                        for zip_file in minio_zip_files:
+                            local_zip_path = os.path.join(BACKUP_DIR, zip_file)
+                            
+                            # Download nếu không tồn tại hoặc 0 byte
+                            if not os.path.exists(local_zip_path) or os.path.getsize(local_zip_path) == 0:
+                                print(f"[INFO] Downloading {zip_file} from MinIO...")
+                                s3_client.download_file(BUCKET_BAK, zip_file, local_zip_path)
+                                file_size_mb = os.path.getsize(local_zip_path) / (1024 * 1024)
+                                print(f"[INFO] Downloaded {zip_file} ({file_size_mb:.2f} MB)")
+                                
+                                if zip_file not in zip_files:
+                                    zip_files.append(zip_file)
+                except ClientError as e:
+                    print(f"[ERROR] Failed to list/download zip files from MinIO: {e}")
+            
             if not zip_files:
                 print("[INFO] No filestore zip files found to restore.")
             else:
+                ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'inah-odoo')
+                
                 for zip_file in zip_files:
                     zip_path = os.path.join(BACKUP_DIR, zip_file)
+                    
+                    # Skip if file doesn't exist or is empty
+                    if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
+                        print(f"[WARNING] Skipping {zip_file} (not found or empty)")
+                        continue
+                    
                     print(f"[INFO] Restoring filestore from: {zip_file}")
                     
                     if USE_POSTGRES_DOCKER:
-                        # Docker mode: cần copy zip vào Odoo container và unzip ở đó
-                        ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'inah-odoo')
-                        
+                        # Docker mode: copy và unzip trong Odoo container
                         # Copy zip file vào Odoo container
                         docker_cp_cmd = ['docker', 'cp', zip_path, f'{ODOO_CONTAINER}:/tmp/{zip_file}']
                         subprocess.run(docker_cp_cmd, check=True)
@@ -307,6 +360,77 @@ def restore(filename):
             print(f"[ERROR] Failed to restore filestore from zip files: {e}")
             
     return redirect(url_for('index'))
+
+
+# Route để sync files từ MinIO về local
+@app.route(f'{URL}sync-from-minio', methods=['POST'])
+def sync_from_minio():
+    if not IS_UPLOAD_MINIO:
+        return jsonify({'error': 'MinIO is not enabled in config'}), 400
+    
+    try:
+        print("[INFO] Starting sync from MinIO...")
+        response = s3_client.list_objects_v2(Bucket=BUCKET_BAK)
+        
+        if 'Contents' not in response:
+            print("[INFO] MinIO bucket is empty")
+            return jsonify({'message': 'No files in MinIO bucket', 'files': []}), 200
+        
+        synced_files = []
+        skipped_files = []
+        
+        for obj in response['Contents']:
+            filename = obj['Key']
+            local_path = os.path.join(BACKUP_DIR, filename)
+            minio_size = obj['Size']
+            
+            # Check if download needed
+            should_download = False
+            reason = ""
+            
+            if not os.path.exists(local_path):
+                should_download = True
+                reason = "file not exists locally"
+            elif os.path.getsize(local_path) == 0:
+                should_download = True
+                reason = "local file is 0 bytes"
+            elif os.path.getsize(local_path) != minio_size:
+                should_download = True
+                reason = f"size mismatch (local: {os.path.getsize(local_path)}, minio: {minio_size})"
+            
+            if should_download:
+                print(f"[INFO] Downloading {filename} from MinIO ({reason})...")
+                try:
+                    s3_client.download_file(BUCKET_BAK, filename, local_path)
+                    file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                    synced_files.append({
+                        'name': filename,
+                        'size_mb': round(file_size_mb, 2)
+                    })
+                    print(f"[INFO] Downloaded {filename} successfully ({file_size_mb:.2f} MB)")
+                except Exception as download_error:
+                    print(f"[ERROR] Failed to download {filename}: {download_error}")
+            else:
+                skipped_files.append(filename)
+                print(f"[INFO] Skipped {filename} (already synced)")
+        
+        message = f'Successfully synced {len(synced_files)} file(s) from MinIO'
+        if skipped_files:
+            message += f', skipped {len(skipped_files)} file(s) (already up-to-date)'
+        
+        print(f"[INFO] Sync completed: {message}")
+        
+        return jsonify({
+            'message': message,
+            'files': [f['name'] for f in synced_files],
+            'synced_count': len(synced_files),
+            'skipped_count': len(skipped_files)
+        }), 200
+        
+    except Exception as e:
+        error_msg = f"Sync failed: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return jsonify({'error': error_msg}), 500
 
 
 @app.route(f'{URL}/backup-now', methods=['POST'])
