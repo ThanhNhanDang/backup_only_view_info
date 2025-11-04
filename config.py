@@ -20,7 +20,7 @@ SECRET_KEY = "autonsi1234"# SECRET_KEY created on UI minio or ROOT_USER_PASSWORD
 BUCKET_BAK = "auto-backup"
 
 FILESTORE_DIR = "/odoo/.local/share/Odoo/filestore/"
-BACKUP_DIR = "/home/administrator/pg_dumps"
+BACKUP_DIR = "/mnt/sdb1/minio/data/auto-backup"
 MAX_FILES_DUMP = 7
 
 #login UI
