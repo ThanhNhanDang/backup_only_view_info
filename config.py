@@ -1,7 +1,7 @@
 import  pytz
 # Timezone cho GMT+7 (Asia/Bangkok)
 LOCAL_TZ = pytz.timezone('Asia/Bangkok')
-
+import shutil
 USE_POSTGRES_DOCKER = True
 IS_UPLOAD_MINIO = True
 

@@ -82,15 +82,15 @@ def index():
     for file_name in os.listdir(BACKUP_DIR):
         file_path = os.path.join(BACKUP_DIR, file_name)
         os.path.isfile(file_path)
-        # if os.path.isfile(file_path) and (file_name.endswith('.dump') or file_name.endswith('.zip')):
-        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        file_creation_time = os.path.getctime(file_path)
-        files.append({
-            'name': file_name,
-            'size': round(file_size_mb, 2),
-            'creation_time': file_creation_time,
-            'is_dump_file': file_name.endswith('.dump')
-        })
+        if os.path.isfile(file_path) and (file_name.endswith('.dump') or file_name.endswith('.zip')):
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            file_creation_time = os.path.getctime(file_path)
+            files.append({
+                'name': file_name,
+                'size': round(file_size_mb, 2),
+                'creation_time': file_creation_time,
+                'is_dump_file': file_name.endswith('.dump')
+            })
     files.sort(key=lambda f: (
         0 if f['name'].endswith('.dump') else 1,
         -f['creation_time']
@@ -193,6 +193,19 @@ def delete(filename):
     return redirect(url_for('index'))
 
 
+import boto3
+from botocore.exceptions import ClientError
+import shutil
+
+# Thêm vào đầu file, sau phần import config
+if IS_UPLOAD_MINIO:
+    s3_client = boto3.client('s3',
+                      endpoint_url=MINIO_URL,
+                      aws_access_key_id=ACCESS_KEY,
+                      aws_secret_access_key=SECRET_KEY,
+                      config=boto3.session.Config(signature_version='s3v4'))
+
+
 @app.route(f'{URL}restore/<filename>', methods=['POST'])
 def restore(filename):
     if filename.endswith('.dump'):
@@ -223,8 +236,13 @@ def restore(filename):
                     return redirect(url_for('index'))
                 
                 print(f"[INFO] File size: {file_size / (1024*1024):.2f} MB")
-                print("Copying file dump into container...")
                 
+                # Clean up existing file/directory in container first
+                print("[INFO] Cleaning up old files in container...")
+                cleanup_old_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', '-rf', f'/tmp/{filename}']
+                subprocess.run(cleanup_old_cmd, stderr=subprocess.DEVNULL)
+                
+                print("Copying file dump into container...")
                 # Copy file vào container
                 docker_cp_cmd = ['docker', 'cp', file_path, f'{PG_CONTAINER}:/tmp/{filename}']
                 subprocess.run(docker_cp_cmd, check=True)
@@ -257,7 +275,7 @@ def restore(filename):
                     print("[INFO] Database restore completed successfully in Docker.")
                     
                 # Clean up file trong container
-                cleanup_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', f'/tmp/{filename}']
+                cleanup_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', '-f', f'/tmp/{filename}']
                 subprocess.run(cleanup_cmd)
                 print(f"[INFO] Cleaned up temp file in container")
                     
@@ -333,24 +351,50 @@ def restore(filename):
                     print(f"[INFO] Restoring filestore from: {zip_file}")
                     
                     if USE_POSTGRES_DOCKER:
-                        # Docker mode: copy và unzip trong Odoo container
-                        # Copy zip file vào Odoo container
-                        docker_cp_cmd = ['docker', 'cp', zip_path, f'{ODOO_CONTAINER}:/tmp/{zip_file}']
-                        subprocess.run(docker_cp_cmd, check=True)
-                        print(f"[INFO] Copied {zip_file} to Odoo container")
+                        # Docker mode: Unzip locally then copy to container
+                        temp_extract_dir = os.path.join(BACKUP_DIR, 'temp_filestore_extract')
                         
-                        # Unzip trong container
-                        unzip_cmd = [
-                            'docker', 'exec', ODOO_CONTAINER,
-                            'unzip', '-o', f'/tmp/{zip_file}', 
-                            '-d', f'/var/lib/odoo/.local/share/Odoo/filestore/'
-                        ]
-                        subprocess.run(unzip_cmd, check=True)
-                        print(f"[INFO] Unzipped {zip_file} in Odoo container")
-                        
-                        # Clean up
-                        cleanup_cmd = ['docker', 'exec', ODOO_CONTAINER, 'rm', f'/tmp/{zip_file}']
-                        subprocess.run(cleanup_cmd)
+                        try:
+                            # Clean up old temp directory
+                            if os.path.exists(temp_extract_dir):
+                                shutil.rmtree(temp_extract_dir)
+                            os.makedirs(temp_extract_dir, exist_ok=True)
+                            
+                            # Unzip locally
+                            print(f"[INFO] Extracting {zip_file} locally...")
+                            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                                zip_ref.extractall(temp_extract_dir)
+                            print(f"[INFO] Extracted successfully")
+                            
+                            # Copy extracted files to Odoo container
+                            # Find the database folder inside extracted files
+                            db_folder = None
+                            for item in os.listdir(temp_extract_dir):
+                                item_path = os.path.join(temp_extract_dir, item)
+                                if os.path.isdir(item_path):
+                                    db_folder = item_path
+                                    break
+                            
+                            if db_folder:
+                                print(f"[INFO] Copying filestore to Odoo container...")
+                                # Copy the entire database folder
+                                docker_cp_cmd = [
+                                    'docker', 'cp', 
+                                    f'{db_folder}/.', 
+                                    f'{ODOO_CONTAINER}:/var/lib/odoo/.local/share/Odoo/filestore/{DB_NAME}/'
+                                ]
+                                subprocess.run(docker_cp_cmd, check=True)
+                                print(f"[INFO] Filestore copied to Odoo container successfully")
+                            else:
+                                print(f"[WARNING] No database folder found in {zip_file}")
+                            
+                            # Clean up temp directory
+                            shutil.rmtree(temp_extract_dir)
+                            
+                        except Exception as e:
+                            print(f"[ERROR] Failed to restore filestore: {e}")
+                            if os.path.exists(temp_extract_dir):
+                                shutil.rmtree(temp_extract_dir)
                         
                     else:
                         # Non-Docker mode
@@ -362,6 +406,82 @@ def restore(filename):
             print(f"[ERROR] Failed to restore filestore from zip files: {e}")
             
     return redirect(url_for('index'))
+
+
+# Route để sync files từ MinIO về local
+@app.route(f'{URL}sync-from-minio', methods=['POST'])
+def sync_from_minio():
+    if not IS_UPLOAD_MINIO:
+        return jsonify({'error': 'MinIO is not enabled in config'}), 400
+    
+    try:
+        print("[INFO] Starting sync from MinIO...")
+        response = s3_client.list_objects_v2(Bucket=BUCKET_BAK)
+        
+        if 'Contents' not in response:
+            print("[INFO] MinIO bucket is empty")
+            return jsonify({'message': 'No files in MinIO bucket', 'files': []}), 200
+        
+        synced_files = []
+        skipped_files = []
+        
+        for obj in response['Contents']:
+            filename = obj['Key']
+            local_path = os.path.join(BACKUP_DIR, filename)
+            minio_size = obj['Size']
+            
+            # Check if download needed
+            should_download = False
+            reason = ""
+            
+            if not os.path.exists(local_path):
+                should_download = True
+                reason = "file not exists locally"
+            elif os.path.isdir(local_path):
+                # If local path is a directory, remove it and download
+                should_download = True
+                reason = "local path is a directory, will be replaced"
+                shutil.rmtree(local_path)
+            elif os.path.getsize(local_path) == 0:
+                should_download = True
+                reason = "local file is 0 bytes"
+            elif os.path.getsize(local_path) != minio_size:
+                should_download = True
+                reason = f"size mismatch (local: {os.path.getsize(local_path)}, minio: {minio_size})"
+            
+            if should_download:
+                print(f"[INFO] Downloading {filename} from MinIO ({reason})...")
+                try:
+                    s3_client.download_file(BUCKET_BAK, filename, local_path)
+                    file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                    synced_files.append({
+                        'name': filename,
+                        'size_mb': round(file_size_mb, 2)
+                    })
+                    print(f"[INFO] Downloaded {filename} successfully ({file_size_mb:.2f} MB)")
+                except Exception as download_error:
+                    print(f"[ERROR] Failed to download {filename}: {download_error}")
+            else:
+                skipped_files.append(filename)
+                print(f"[INFO] Skipped {filename} (already synced)")
+        
+        message = f'Successfully synced {len(synced_files)} file(s) from MinIO'
+        if skipped_files:
+            message += f', skipped {len(skipped_files)} file(s) (already up-to-date)'
+        
+        print(f"[INFO] Sync completed: {message}")
+        
+        return jsonify({
+            'message': message,
+            'files': [f['name'] for f in synced_files],
+            'synced_count': len(synced_files),
+            'skipped_count': len(skipped_files)
+        }), 200
+        
+    except Exception as e:
+        error_msg = f"Sync failed: {str(e)}"
+        print(f"[ERROR] {error_msg}")
+        return jsonify({'error': error_msg}), 500
 
 
 # Route để sync files từ MinIO về local
