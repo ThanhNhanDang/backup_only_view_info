@@ -208,246 +208,37 @@ if IS_UPLOAD_MINIO:
 
 @app.route(f'{URL}restore/<filename>', methods=['POST'])
 def restore(filename):
-    if filename.endswith('.dump'):
-        file_path = os.path.join(BACKUP_DIR, filename)
-        
-        # Restore database
-        if USE_POSTGRES_DOCKER:
-            print("Restore in docker mode")
-            try:
-                # Verify file size
-                file_size = os.path.getsize(file_path)
-                if file_size == 0:
-                    print(f"[ERROR] File {filename} is 0 bytes!")
-                    return redirect(url_for('index'))
-                
-                print(f"[INFO] File size: {file_size / (1024*1024):.2f} MB")
-                
-                # Clean up existing file/directory in container first
-                print("[INFO] Cleaning up old files in container...")
-                cleanup_old_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', '-rf', f'/tmp/{filename}']
-                subprocess.run(cleanup_old_cmd, stderr=subprocess.DEVNULL)
-                
-                print("Copying file dump into container...")
-                # Copy file vào container
-                docker_cp_cmd = ['docker', 'cp', file_path, f'{PG_CONTAINER}:/tmp/{filename}']
-                subprocess.run(docker_cp_cmd, check=True)
-                print(f"[INFO] File copied successfully to container")
-                
-                # Verify file trong container
-                verify_cmd = ['docker', 'exec', PG_CONTAINER, 'ls', '-lh', f'/tmp/{filename}']
-                verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
-                print(f"[INFO] File in container: {verify_result.stdout}")
-                
-                # Restore database
-                restore_cmd = [
-                    'docker', 'exec', '-i', PG_CONTAINER,
-                    'pg_restore',
-                    '-U', DB_USER,
-                    '-p', str(PG_PORT),
-                    '-C',
-                    '-d', 'postgres',
-                    f'/tmp/{filename}'
-                ]
-                print(f"[INFO] Running restore command in Docker: {' '.join(restore_cmd)}")
-                
-                result = subprocess.run(restore_cmd, capture_output=True, text=True)
-                
-                if result.returncode != 0:
-                    print(f"[ERROR] pg_restore stderr: {result.stderr}")
-                    print(f"[ERROR] pg_restore stdout: {result.stdout}")
-                    print(f"[ERROR] Please DROP or RENAME old database before restore.")
-                else:
-                    print("[INFO] Database restore completed successfully in Docker.")
-                    
-                # Clean up file trong container
-                cleanup_cmd = ['docker', 'exec', PG_CONTAINER, 'rm', '-f', f'/tmp/{filename}']
-                subprocess.run(cleanup_cmd)
-                print(f"[INFO] Cleaned up temp file in container")
-                    
-            except subprocess.CalledProcessError as e:
-                print(f"[ERROR] Command failed: {e}")
-            except Exception as ex:
-                print(f"[ERROR] Unexpected error: {ex}")
-        else:
-            # Non-Docker mode
-            print("Postgres is installed directly on the server, not using Docker.")
-            try:
-                if not os.path.exists(file_path):
-                    print(f"[ERROR] Backup file not found: {file_path}")
-                    return redirect(url_for('index'))
-                    
-                restore_cmd = [
-                    'sudo', '-u', 'odoo',
-                    os.path.join(PG_BIN, 'pg_restore'),
-                    '-U', DB_USER,
-                    '-p', str(PG_PORT),
-                    '-C',
-                    '-d', 'postgres',
-                    file_path
-                ]
-                print(f"[INFO] Running restore command: {' '.join(restore_cmd)}")
-                result = subprocess.run(restore_cmd, check=True)
-                print(f"[INFO] Database restore completed successfully.")
-            except subprocess.CalledProcessError as e:
-                print(f"[ERROR] pg_restore failed: {e}")
-            except Exception as ex:
-                print(f"[ERROR] Unexpected error: {ex}")
-        
-        # Restore filestore
-        try:
-            zip_files = [f for f in os.listdir(BACKUP_DIR) if f.endswith('.zip')]
-            
-            if not zip_files:
-                print("[INFO] No filestore zip files found to restore.")
-            else:
-                ODOO_CONTAINER = os.getenv('ODOO_CONTAINER', 'inah-odoo')
-                
-                for zip_file in zip_files:
-                    zip_path = os.path.join(BACKUP_DIR, zip_file)
-                    
-                    # Skip if file doesn't exist or is empty
-                    if not os.path.exists(zip_path) or os.path.getsize(zip_path) == 0:
-                        print(f"[WARNING] Skipping {zip_file} (not found or empty)")
-                        continue
-                    
-                    print(f"[INFO] Restoring filestore from: {zip_file}")
-                    
-                    if USE_POSTGRES_DOCKER:
-                        # Docker mode: Unzip locally then copy to container
-                        temp_extract_dir = os.path.join(BACKUP_DIR, 'temp_filestore_extract')
-                        
-                        try:
-                            # Clean up old temp directory
-                            if os.path.exists(temp_extract_dir):
-                                shutil.rmtree(temp_extract_dir)
-                            os.makedirs(temp_extract_dir, exist_ok=True)
-                            
-                            # Unzip locally
-                            print(f"[INFO] Extracting {zip_file} locally...")
-                            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                                zip_ref.extractall(temp_extract_dir)
-                            print(f"[INFO] Extracted successfully")
-                            
-                            # List all extracted folders
-                            extracted_items = os.listdir(temp_extract_dir)
-                            print(f"[INFO] Extracted folders: {extracted_items}")
-                            
-                            # Find the correct database folder
-                            # Priority: 1. Exact match with DB_NAME
-                            #          2. Folder starting with DB_NAME
-                            #          3. First directory found
-                            db_folder = None
-                            db_folder_candidates = []
-                            
-                            for item in extracted_items:
-                                item_path = os.path.join(temp_extract_dir, item)
-                                if os.path.isdir(item_path):
-                                    db_folder_candidates.append((item, item_path))
-                            
-                            # Try exact match first
-                            for item_name, item_path in db_folder_candidates:
-                                if item_name == DB_NAME:
-                                    db_folder = item_path
-                                    db_folder_name = item_name
-                                    print(f"[INFO] Found exact match database folder: {db_folder_name}")
-                                    break
-                            
-                            # If no exact match, try prefix match
-                            if not db_folder:
-                                for item_name, item_path in db_folder_candidates:
-                                    if item_name.startswith(DB_NAME + '_'):
-                                        db_folder = item_path
-                                        db_folder_name = item_name
-                                        print(f"[INFO] Found prefix match database folder: {db_folder_name}")
-                                        break
-                            
-                            # If still no match, use first directory
-                            if not db_folder and db_folder_candidates:
-                                db_folder_name, db_folder = db_folder_candidates[0]
-                                print(f"[WARNING] No exact match found, using first directory: {db_folder_name}")
-                            
-                            if db_folder:
-                                # List contents of the database folder
-                                db_contents = os.listdir(db_folder)
-                                print(f"[INFO] Database folder '{db_folder_name}' contains: {db_contents}")
-                                
-                                # Check if we need to map from source DB name to target DB name
-                                target_filestore = f'/var/lib/odoo/.local/share/Odoo/filestore/{DB_NAME}/'
-                                
-                                # If source DB name differs from target, we need to copy all subfolders
-                                if db_folder_name != DB_NAME:
-                                    print(f"[INFO] Mapping filestore from '{db_folder_name}' to '{DB_NAME}'")
-                                
-                                print(f"[INFO] Copying filestore to Odoo container at: {target_filestore}")
-                                
-                                # Ensure target directory exists in container
-                                mkdir_cmd = [
-                                    'docker', 'exec', ODOO_CONTAINER,
-                                    'mkdir', '-p', target_filestore
-                                ]
-                                subprocess.run(mkdir_cmd, check=True)
-                                
-                                # Copy all contents from the database folder
-                                docker_cp_cmd = [
-                                    'docker', 'cp', 
-                                    f'{db_folder}/.', 
-                                    f'{ODOO_CONTAINER}:{target_filestore}'
-                                ]
-                                result = subprocess.run(docker_cp_cmd, capture_output=True, text=True)
-                                
-                                if result.returncode == 0:
-                                    print(f"[INFO] Filestore copied successfully to Odoo container")
-                                    
-                                    # Verify copied contents
-                                    verify_cmd = [
-                                        'docker', 'exec', ODOO_CONTAINER,
-                                        'ls', '-la', target_filestore
-                                    ]
-                                    verify_result = subprocess.run(verify_cmd, capture_output=True, text=True)
-                                    print(f"[INFO] Contents in container: {verify_result.stdout}")
-                                else:
-                                    print(f"[ERROR] Failed to copy filestore: {result.stderr}")
-                            else:
-                                print(f"[WARNING] No database folder found in {zip_file}")
-                            
-                            # Clean up temp directory
-                            shutil.rmtree(temp_extract_dir)
-                            
-                        except PermissionError as pe:
-                            print(f"[ERROR] Permission denied during filestore restore: {pe}")
-                            print(f"[INFO] Please run: sudo chown -R $USER:$USER {BACKUP_DIR}")
-                            if os.path.exists(temp_extract_dir):
-                                try:
-                                    shutil.rmtree(temp_extract_dir)
-                                except:
-                                    pass
-                        except Exception as e:
-                            print(f"[ERROR] Failed to restore filestore: {e}")
-                            import traceback
-                            print(f"[ERROR] Traceback: {traceback.format_exc()}")
-                            if os.path.exists(temp_extract_dir):
-                                try:
-                                    shutil.rmtree(temp_extract_dir)
-                                except:
-                                    pass
-                        
-                    else:
-                        # Non-Docker mode
-                        try:
-                            subprocess.run(['sudo', '-u', 'odoo', 'unzip', '-o', zip_path, '-d', FILESTORE_DIR], check=True)
-                        except Exception as e:
-                            print(f"[ERROR] Failed to unzip in non-Docker mode: {e}")
-                
-                print("[INFO] All filestore zip files restored successfully.")
-                
-        except Exception as e:
-            print(f"[ERROR] Failed to restore filestore from zip files: {e}")
-            import traceback
-            print(f"[ERROR] Traceback: {traceback.format_exc()}")
-            
+    from odoo_backup_manager import OdooBackupManager
+    from config import ODOO_URL, ODOO_MASTER_PASSWORD, LOCAL_TZ, DB_NAME
+    
+    file_path = os.path.join(BACKUP_DIR, filename)
+    
+    if not os.path.exists(file_path):
+        print(f"[ERROR] Backup file not found: {file_path}")
+        return redirect(url_for('index'))
+    
+    # Initialize Odoo Backup Manager
+    backup_manager = OdooBackupManager(ODOO_URL, ODOO_MASTER_PASSWORD, LOCAL_TZ)
+    
+    print(f"[INFO] Starting restore from: {filename}")
+    
+    # Option 1: Drop existing database first (recommended)
+    print(f"[INFO] Dropping existing database: {DB_NAME}")
+    drop_success, drop_msg = backup_manager.drop_database(DB_NAME)
+    if drop_success:
+        print(f"[INFO] {drop_msg}")
+    else:
+        print(f"[WARNING] Could not drop database: {drop_msg}")
+    
+    # Restore database
+    success, message = backup_manager.restore_database(file_path, db_name=DB_NAME, copy=False)
+    
+    if success:
+        print(f"[INFO] {message}")
+    else:
+        print(f"[ERROR] {message}")
+    
     return redirect(url_for('index'))
-
 
 # Route để sync files từ MinIO về local
 @app.route(f'{URL}sync-from-minio', methods=['POST'])
