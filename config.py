@@ -12,7 +12,7 @@ PG_PORT = 5432
 PG_BIN = '/usr/bin/'
 PG_CONTAINER = 'postgres_db'
 DUMP_PREFIX = DB_NAME
-ODOO_CONTAINER = 'inah-odoo'
+
 # === Configuration Minio ===
 MINIO_URL = "http://192.168.1.211:9000" # URL API Minio
 ACCESS_KEY = "autonsi" #ACCESS_KEY created  on UI minio or ROOT_USER
@@ -20,7 +20,7 @@ SECRET_KEY = "autonsi1234"# SECRET_KEY created on UI minio or ROOT_USER_PASSWORD
 BUCKET_BAK = "auto-backup"
 
 FILESTORE_DIR = "/odoo/.local/share/Odoo/filestore/"
-BACKUP_DIR = "/mnt/sdb1/minio/data/auto-backup"
+BACKUP_DIR = "/home/administrator/pg_dumps"
 MAX_FILES_DUMP = 7
 
 #login UI
