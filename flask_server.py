@@ -2,6 +2,7 @@
 import builtins
 import logging
 from config import DB_NAME, DB_USER, DB_PASSWORD, PG_PORT, PG_CONTAINER, PG_BIN, USE_POSTGRES_DOCKER
+from config import IS_UPLOAD_MINIO,MINIO_URL, ACCESS_KEY, SECRET_KEY, BUCKET_BAK, BACKUP_DIR, FILESTORE_DIR, PASSWORD_LOGIN_UI, LOCAL_TZ
 if IS_UPLOAD_MINIO:
     s3_client = boto3.client('s3',
                       endpoint_url=MINIO_URL,
@@ -9,7 +10,6 @@ if IS_UPLOAD_MINIO:
                       aws_secret_access_key=SECRET_KEY,
                       config=boto3.session.Config(signature_version='s3v4'))
 
-from config import MINIO_URL, ACCESS_KEY, SECRET_KEY, BUCKET_BAK, BACKUP_DIR, FILESTORE_DIR, PASSWORD_LOGIN_UI, LOCAL_TZ
 from flask import Flask, render_template, request, Response, jsonify, redirect, url_for, session
 import atexit
 import signal
@@ -431,7 +431,6 @@ def sync_from_minio():
         error_msg = f"Sync failed: {str(e)}"
         print(f"[ERROR] {error_msg}")
         return jsonify({'error': error_msg}), 500
-
 
 @app.route(f'{URL}/backup-now', methods=['POST'])
 def backup_now():
