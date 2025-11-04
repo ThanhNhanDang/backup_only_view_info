@@ -210,21 +210,6 @@ if IS_UPLOAD_MINIO:
 def restore(filename):
     if filename.endswith('.dump'):
         file_path = os.path.join(BACKUP_DIR, filename)
-        
-        # Kiểm tra nếu file local không tồn tại hoặc 0 byte, download từ MinIO
-        if IS_UPLOAD_MINIO:
-            if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-                print(f"[INFO] File {filename} not found or empty locally. Downloading from MinIO...")
-                try:
-                    s3_client.download_file(BUCKET_BAK, filename, file_path)
-                    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-                    print(f"[INFO] Downloaded {filename} from MinIO ({file_size_mb:.2f} MB)")
-                except ClientError as e:
-                    print(f"[ERROR] Failed to download from MinIO: {e}")
-                    return redirect(url_for('index'))
-            else:
-                print(f"[INFO] Using local file: {filename}")
-        
         # Restore database
         if USE_POSTGRES_DOCKER:
             print("Restore in docker mode")
