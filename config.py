@@ -22,7 +22,7 @@ ODOO_MASTER_PASSWORD = "JkM5DvrD3wWSSMGP"  # Master password của Odoo (trong o
 MINIO_URL = "http://192.168.1.211:9000"
 ACCESS_KEY = "autonsi"
 SECRET_KEY = "autonsi1234"
-BUCKET_BAK = "backup"
+BUCKET_BAK = "auto-backup"
 
 FILESTORE_DIR = "/odoo/.local/share/Odoo/filestore/"
 BACKUP_DIR = "/home/administrator/pg_dumps"
