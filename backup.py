@@ -74,6 +74,7 @@ number_of_files = 0
 oldest_file = None  # To store the oldest file if we need to delete it
 dump_files = []  # Lưu trữ danh sách các file dump
 for filename in os.listdir(BACKUP_DIR):
+    print(filename)
     if filename.endswith(".dump"):
 
         file_path = os.path.join(BACKUP_DIR, filename)
